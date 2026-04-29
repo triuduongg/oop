@@ -1,0 +1,895 @@
+Đồng ý! Việc trích xuất riêng rẽ và giải thích chi tiết từng dòng như thế này sẽ rất tuyệt vời để bạn đưa vào báo cáo Bài tập lớn (phần Thuyết minh code) hoặc để nắm rõ 100% phần việc mình đảm nhiệm. 
+
+Dưới đây là toàn bộ các hàm thuộc trách nhiệm của **Người thứ 5 (Giao diện chính, dashboard, giao dịch, thống kê và UI)**, được tôi trích xuất riêng và comment chi tiết từng dòng một:
+
+### 1. Khởi tạo Khung Giao diện & Cảnh báo (Main UI & Alerts)
+```java
+void checkLowStockAlert() {
+    // Dùng Stream API để lọc danh sách, chỉ lấy các sản phẩm có số lượng chạm mức tối thiểu (isLow)
+    List<Product> lowProducts = products.stream().filter(Product::isLow).collect(Collectors.toList());
+    // Kiểm tra nếu danh sách sản phẩm sắp hết hàng không bị trống
+    if (!lowProducts.isEmpty()) {
+        // Tạo đối tượng StringBuilder để nối chuỗi tối ưu hiệu suất, chứa tiêu đề cảnh báo
+        StringBuilder sb = new StringBuilder("⚠️ CẢNH BÁO: CÁC SẢN PHẨM CẦN NHẬP THÊM HÀNG\n\n");
+        // Vòng lặp duyệt qua từng sản phẩm trong danh sách sắp hết
+        for (Product p : lowProducts) {
+            // Gắn tên, mã SP, số lượng tồn hiện tại và mức tối thiểu của từng sản phẩm vào chuỗi
+            sb.append("- ").append(p.name).append(" (Mã: ").append(p.id).append(")").append(" | Tồn hiện tại: ").append(p.quantity).append(" | Tối thiểu: ").append(p.minStock).append("\n");
+        }
+        // Thêm câu nhắc nhở ở cuối hộp thoại
+        sb.append("\nVui lòng kiểm tra và lên kế hoạch nhập kho!");
+        // Hiển thị hộp thoại (Popup) cảnh báo với thông điệp đã tạo, kèm icon Warning (Tam giác vàng)
+        JOptionPane.showMessageDialog(this, sb.toString(), "Cảnh báo Tồn kho", JOptionPane.WARNING_MESSAGE);
+    }
+}
+void buildUI() {
+    // Set bố cục cho cửa sổ chính là BorderLayout (Chia 5 vùng: Bắc, Nam, Đông, Tây, Giữa)
+    setLayout(new BorderLayout());
+    // Khởi tạo CardLayout để có thể lật/chuyển đổi qua lại giữa các trang giao diện khác nhau
+    cards = new CardLayout();
+    // Tạo Panel chính chứa các trang, sử dụng CardLayout vừa tạo
+    contentArea = new JPanel(cards);
+    // Đặt màu nền cho vùng hiển thị nội dung
+    contentArea.setBackground(C_BG);
+    // Kiểm tra quyền của người dùng hiện tại, nếu là "Quản lý kho" thì nạp các màn hình của kho
+    if (currentUser.role.equals("Quản lý kho")) {
+        // Thêm trang Tổng quan vào contentArea với tên định danh là "dashboard"
+        contentArea.add(buildDashboard(), "dashboard");
+        // Thêm trang Sản phẩm vào contentArea
+        contentArea.add(buildProductPanel(), "products");
+        // Thêm trang Nhập kho vào contentArea
+        contentArea.add(buildImportPanel(), "import");
+        // Thêm trang Xuất kho vào contentArea
+        contentArea.add(buildExportPanel(), "export");
+        // Thêm trang Lịch sử giao dịch vào contentArea
+        contentArea.add(buildTransPanel(), "trans");
+        // Thêm trang Thống kê vào contentArea
+        contentArea.add(buildStatsPanel(), "stats");
+        // Lệnh cho CardLayout hiển thị màn hình "dashboard" lên đầu tiên
+        cards.show(contentArea, "dashboard");
+        // Gọi hàm làm mới dữ liệu cho Dashboard ngay khi vừa nạp
+        refreshDashboard();
+    } else { // Nếu không phải quản lý kho (tức là Quản lý nhân sự)
+        // Thêm trang Quản lý tài khoản
+        contentArea.add(buildAccountPanel(), "accounts");
+        // Thêm trang Thống kê tài khoản
+        contentArea.add(buildAccStatsPanel(), "stats_acc");
+        // Hiển thị màn hình quản lý tài khoản lên đầu tiên
+        cards.show(contentArea, "accounts");
+    }
+    // Gắn thanh Top Bar (Header) lên phía Bắc (Trên cùng) của cửa sổ
+    add(buildTopBar(), BorderLayout.NORTH);
+    // Gắn thanh Sidebar (Menu điều hướng) sang phía Tây (Bên trái) của cửa sổ
+    add(buildSidebar(), BorderLayout.WEST);
+    // Gắn thanh Status Bar (Trạng thái) xuống phía Nam (Dưới cùng) của cửa sổ
+    add(buildStatusBar(), BorderLayout.SOUTH);
+    // Gắn vùng nội dung chính (Chứa các thẻ trang) vào vùng Giữa (Trung tâm chiếm diện tích lớn nhất)
+    add(contentArea, BorderLayout.CENTER);
+}
+```
+
+### 2. Header, Sidebar & Footer (Các thanh điều hướng)
+```java
+JPanel buildTopBar() {
+    // Khởi tạo Panel làm thanh TopBar với bố cục BorderLayout
+    JPanel bar = new JPanel(new BorderLayout());
+    // Đặt màu nền trắng
+    bar.setBackground(C_WHITE);
+    // Đặt đường viền dưới màu xám (C_BORDER) để tách biệt với vùng nội dung, và thêm khoảng đệm margin
+    bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, C_BORDER), new EmptyBorder(10, 20, 10, 20)));
+    // Tạo cụm bên trái (chứa Logo) căn lề Left, khoảng cách phần tử 10px
+    JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+    // Đặt nền trắng cho cụm trái
+    left.setBackground(C_WHITE);
+    // Vẽ thủ công Logo bằng cách ghi đè hàm paintComponent
+    JPanel logoMark = new JPanel() {
+        @Override protected void paintComponent(Graphics g) {
+            // Ép kiểu sang Graphics2D để vẽ nét mượt hơn
+            Graphics2D g2 = (Graphics2D) g.create();
+            // Bật khử răng cưa (Anti-aliasing) giúp hình vẽ không bị vỡ hạt
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // Đổ màu xanh và vẽ một hình chữ nhật bo góc (kích thước 32x32, bo 8px)
+            g2.setColor(C_BLUE); g2.fillRoundRect(0, 0, 32, 32, 8, 8);
+            // Chọn màu chữ trắng, font đậm size 16 để vẽ chữ "E" ở giữa
+            g2.setColor(C_WHITE); g2.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            // Vẽ chữ "E" tạo thành Logo
+            g2.drawString("E", 10, 22); g2.dispose(); // Hủy đối tượng đồ họa để giải phóng RAM
+        }
+        // Đặt kích thước cứng cho Logo là 32x32
+        @Override public Dimension getPreferredSize() { return new Dimension(32, 32); }
+    };
+    // Làm trong suốt nền của Logo
+    logoMark.setOpaque(false);
+    // Tạo nhãn chứa tên phần mềm
+    JLabel lblLogo = new JLabel("ElectroStock");
+    // Thiết lập font đậm, size 18 cho tên phần mềm
+    lblLogo.setFont(new Font("Segoe UI", Font.BOLD, 18));
+    // Đặt màu xanh cho chữ
+    lblLogo.setForeground(C_BLUE);
+    // Nạp Logo và tên phần mềm vào cụm bên trái
+    left.add(logoMark); left.add(lblLogo);
+    // Tạo cụm bên phải căn lề Right để chứa thông tin User và nút Đăng xuất
+    JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+    // Set nền trắng cho cụm phải
+    right.setBackground(C_WHITE);
+    // Hiển thị chức vụ và tên user đang đăng nhập
+    JLabel lblUser = new JLabel(currentUser.role + ": " + currentUser.username);
+    // Cài font và màu chữ mờ cho tên User
+    lblUser.setFont(F_BODY); lblUser.setForeground(C_TEXT2);
+    // Khởi tạo nút Đăng xuất
+    JButton btnLogout = new JButton("Đăng xuất");
+    // Set font nhỏ, chữ màu đỏ cảnh báo
+    btnLogout.setFont(F_SMALL); btnLogout.setForeground(C_RED);
+    // Set nền màu đỏ nhạt cho nút
+    btnLogout.setBackground(C_RED_LT);
+    // Tạo viền đỏ nhạt và padding cho nút đăng xuất
+    btnLogout.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(252,165,165), 1), new EmptyBorder(4, 12, 4, 12)));
+    // Xóa viền nét đứt khi click vào nút
+    btnLogout.setFocusPainted(false);
+    // Đổi con trỏ chuột thành hình bàn tay khi di chuột qua
+    btnLogout.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    // Thêm sự kiện click cho nút Đăng xuất
+    btnLogout.addActionListener(e -> {
+        // Bật hộp thoại hỏi xác nhận có chắc chắn muốn thoát không
+        int r = JOptionPane.showConfirmDialog(this, "Bạn có muốn đăng xuất?", "Xác nhận", JOptionPane.YES_NO_OPTION);
+        // Nếu user chọn Yes (Đồng ý)
+        if (r == JOptionPane.YES_OPTION) {
+            // Tắt cửa sổ chính hiện tại
+            dispose(); SwingUtilities.invokeLater(LoginFrame::new); // Gọi lại màn hình LoginFrame
+        }
+    });
+    // Nạp tên user và nút đăng xuất vào cụm bên phải
+    right.add(lblUser); right.add(btnLogout);
+    // Lắp cụm trái vào hướng Tây của TopBar
+    bar.add(left, BorderLayout.WEST);
+    // Lắp cụm phải vào hướng Đông của TopBar
+    bar.add(right, BorderLayout.EAST);
+    // Trả về đối tượng Panel TopBar đã xây dựng xong
+    return bar;
+}
+JPanel buildSidebar() {
+    // Khởi tạo Panel chứa menu dọc
+    JPanel sb = new JPanel();
+    // Đặt chiều rộng cố định 210px, chiều cao tự co dãn (0)
+    sb.setPreferredSize(new Dimension(210, 0));
+    // Đặt màu nền xanh đậm cho Sidebar
+    sb.setBackground(C_SIDEBAR);
+    // Thiết lập bố cục xếp dọc từ trên xuống dưới (Y_AXIS)
+    sb.setLayout(new BoxLayout(sb, BoxLayout.Y_AXIS));
+    // Tạo khoảng trống 20px ở trên cùng cho thoáng
+    sb.add(Box.createVerticalStrut(20));
+    // Tạo nhãn tiêu đề "DANH MỤC"
+    JLabel lbl = new JLabel("DANH MỤC");
+    // Set font đậm, size nhỏ 10
+    lbl.setFont(new Font("Segoe UI", Font.BOLD, 10));
+    // Màu chữ xám nhạt
+    lbl.setForeground(new Color(100,116,139));
+    // Tạo đệm lề trái 18px, dưới 8px
+    lbl.setBorder(new EmptyBorder(0, 18, 8, 0));
+    // Căn lề trái cho nhãn
+    lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Thêm nhãn vào Sidebar
+    sb.add(lbl);
+    // Mảng 2 chiều lưu cấu hình Menu dành cho Quản lý Kho (Tên nhãn, Tên Card cần gọi)
+    String[][] itemsKho = {{"Tổng quan","dashboard"},{"Sản phẩm","products"},{"Nhập kho","import"},{"Xuất kho","export"},{"Giao dịch","trans"},{"Thống kê","stats"}};
+    // Mảng 2 chiều lưu cấu hình Menu dành cho Quản lý Nhân sự
+    String[][] itemsNS = {{"Tài khoản","accounts"}, {"Thống kê", "stats_acc"}};
+    // Dùng toán tử 3 ngôi để quyết định nạp mảng menu nào dựa trên Role của User
+    String[][] items = currentUser.role.equals("Quản lý kho") ? itemsKho : itemsNS;
+    // Khởi tạo ButtonGroup để gom nhóm các nút bấm (chỉ cho phép chọn 1 menu tại 1 thời điểm)
+    ButtonGroup grp = new ButtonGroup();
+    // Biến cờ để đánh dấu nút đầu tiên
+    boolean first = true;
+    // Vòng lặp duyệt qua mảng menu đã chọn
+    for (String[] item : items) {
+        // Gọi hàm buildNavBtn để tạo nút bấm với giao diện tuỳ chỉnh
+        JToggleButton btn = buildNavBtn(item[0], item[1]);
+        // Đưa nút vào Group để giới hạn chọn 1
+        grp.add(btn); sb.add(btn); // Đưa nút vào Sidebar hiển thị
+        // Nếu là nút đầu tiên, thiết lập trạng thái mặc định là "được chọn"
+        if (first) { btn.setSelected(true); first = false; }
+    }
+    // Tạo một khoảng dãn (Glue) đẩy thông tin phiên bản xuống tít dưới đáy Sidebar
+    sb.add(Box.createVerticalGlue());
+    // Tạo nhãn hiển thị Version phần mềm
+    JLabel ver = new JLabel("v1.0  -  ElectroStock");
+    // Set font size nhỏ và màu chữ xám
+    ver.setFont(F_SMALL); ver.setForeground(new Color(100,116,139));
+    // Thêm đệm để chữ không dính viền
+    ver.setBorder(new EmptyBorder(10,18,14,0));
+    // Căn trái
+    ver.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Đưa nhãn Version vào Sidebar
+    sb.add(ver);
+    // Trả về Sidebar hoàn chỉnh
+    return sb;
+}
+JToggleButton buildNavBtn(String label, String card) {
+    // Khởi tạo JToggleButton và ghi đè sự kiện vẽ để làm giao diện menu cực phẳng
+    JToggleButton btn = new JToggleButton() {
+        @Override protected void paintComponent(Graphics g) {
+            // Ép sang Graphics2D
+            Graphics2D g2 = (Graphics2D) g.create();
+            // Khử răng cưa
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // Lấy trạng thái xem nút có đang được chọn hay không
+            boolean sel   = isSelected();
+            // Lấy trạng thái xem chuột có đang lướt qua (hover) hay không
+            boolean hover = getModel().isRollover();
+            // Nếu đang được chọn
+            if (sel) {
+                // Đổ nền nút màu xanh dương sáng
+                g2.setColor(C_BLUE);
+                // Vẽ hình nền bo góc
+                g2.fillRoundRect(8, 2, getWidth()-16, getHeight()-4, 8, 8);
+            } else if (hover) { // Nếu chỉ hover chuột qua
+                // Đổ nền màu xanh xám nhẹ
+                g2.setColor(C_SIDEBAR_HL);
+                // Vẽ hình nền bo góc
+                g2.fillRoundRect(8, 2, getWidth()-16, getHeight()-4, 8, 8);
+            }
+            // Tính tọa độ Y giữa tâm nút
+            int cy = getHeight()/2;
+            // Chọn màu cho icon chấm tròn nhỏ: Trắng nếu đang chọn, Xám nếu không
+            g2.setColor(sel ? C_WHITE : new Color(100,116,139));
+            // Vẽ icon chấm tròn đại diện cho menu
+            g2.fillOval(20, cy-4, 8, 8);
+            // Chữ sẽ in đậm nếu đang chọn, ngược lại in thường
+            g2.setFont(sel ? new Font("Segoe UI", Font.BOLD, 13) : F_BODY);
+            // Chọn màu chữ
+            g2.setColor(sel ? C_WHITE : new Color(203,213,225));
+            // Vẽ chữ của menu lên nút
+            g2.drawString(label, 38, cy+5);
+            // Hủy đối tượng vẽ
+            g2.dispose();
+        }
+    };
+    // Khóa cứng kích thước nút là 210x42 pixel
+    btn.setPreferredSize(new Dimension(210, 42));
+    btn.setMaximumSize(new Dimension(210, 42));
+    // Tắt hiển thị viền và nền mặc định của Java Swing
+    btn.setOpaque(false); btn.setContentAreaFilled(false);
+    btn.setBorderPainted(false); btn.setFocusPainted(false);
+    // Bật con trỏ hình bàn tay
+    btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    // Căn trái
+    btn.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Thêm sự kiện khi nút được Click
+    btn.addItemListener(e -> {
+        // Chỉ xử lý khi trạng thái chuyển sang SELECTED (Tránh click nhiều lần)
+        if (e.getStateChange() == ItemEvent.SELECTED) {
+            // Nếu là trang Thống kê Kho, gọi hàm nạp lại dữ liệu thống kê Kho
+            if ("stats".equals(card))     refreshStats();
+            // Nếu là trang Thống kê Nhân sự, nạp lại biểu đồ nhân sự
+            if ("stats_acc".equals(card)) refreshAccStats();
+            // Nếu là trang Giao dịch, nạp lại bảng Lịch sử GD
+            if ("trans".equals(card))     refreshTransTable();
+            // Nếu là Tổng quan, tính toán lại các Card Tổng
+            if ("dashboard".equals(card)) refreshDashboard();
+            // Nếu vào trang Nhập kho, dựng lại panel Nhập để reset ô chọn
+            if ("import".equals(card))    rebuildImport();
+            // Nếu vào trang Xuất kho, dựng lại panel Xuất
+            if ("export".equals(card))    rebuildExport();
+            // Lệnh CardLayout hiển thị đúng tên trang (card) tương ứng
+            cards.show(contentArea, card);
+            // Bắn log xuống thanh Status Bar dưới đáy màn hình
+            setStatus("Đang xem: " + label);
+        }
+    });
+    // Trả về nút đã hoàn thiện
+    return btn;
+}
+JPanel buildStatusBar() {
+    // Khởi tạo Panel Status Bar
+    JPanel bar = new JPanel(new BorderLayout());
+    // Màu nền xám siêu nhạt
+    bar.setBackground(new Color(248,250,252));
+    // Đặt đường kẻ viền màu xám mỏng ở mép trên
+    bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,C_BORDER), new EmptyBorder(5,20,5,20)));
+    // Tạo nhãn hiển thị thông điệp hệ thống
+    lblStatus = new JLabel("Hệ thống sẵn sàng");
+    // Font nhỏ, chữ màu xanh lá
+    lblStatus.setFont(F_SMALL); lblStatus.setForeground(C_GREEN);
+    // Tạo nhãn hiển thị Ngày tháng hiện tại
+    JLabel lblDate = new JLabel(new SimpleDateFormat("dd/MM/yyyy").format(new Date()));
+    // Set font nhỏ màu xám cho Date
+    lblDate.setFont(F_SMALL); lblDate.setForeground(C_TEXT3);
+    // Lắp câu thông báo sang phía Tây (trái)
+    bar.add(lblStatus, BorderLayout.WEST);
+    // Lắp Ngày tháng sang phía Đông (phải)
+    bar.add(lblDate,   BorderLayout.EAST);
+    // Trả về thanh Status Bar
+    return bar;
+}
+// Hàm cập nhật trạng thái nhanh, truyền msg vào và nó set lại dòng text dưới đáy
+void setStatus(String msg) { if (lblStatus != null) lblStatus.setText(msg); }
+```
+
+### 3. Dashboard (Tổng quan hệ thống kho)
+```java
+JPanel buildDashboard() {
+    // Panel ngoài cùng chứa toàn bộ màn Tổng quan
+    JPanel outer = new JPanel(new BorderLayout(0,16));
+    // Set màu nền và padding margin
+    outer.setBackground(C_BG); outer.setBorder(new EmptyBorder(24,24,24,24));
+    // Tiêu đề của màn hình
+    JLabel title = new JLabel("Tổng quan hệ thống");
+    // Set font to (F_TITLE)
+    title.setFont(F_TITLE); title.setForeground(C_TEXT);
+    // Gắn tiêu đề lên trên cùng
+    outer.add(title, BorderLayout.NORTH);
+    // Khởi tạo Panel khu vực giữa để chứa Card Thống kê và Bảng
+    JPanel center = new JPanel(new BorderLayout(0,16));
+    center.setBackground(C_BG);
+    // Khởi tạo cụm chứa 4 thẻ Card Thống kê, bố cục lưới 1 hàng 4 cột
+    JPanel cardRow = new JPanel(new GridLayout(1,4,14,0));
+    cardRow.setBackground(C_BG);
+    // Khởi tạo các Nhãn (Label) sẽ chứa số liệu chạy real-time để update sau
+    statTotal = new JLabel("0"); statValue = new JLabel("0");
+    statLow   = new JLabel("0"); statOut   = new JLabel("0");
+    // Dựng 4 thẻ thống kê và nạp vào Row bằng cách gọi hàm tiện ích statCard() với các màu tương ứng
+    cardRow.add(statCard("Tổng sản phẩm",   statTotal, C_BLUE,  C_BLUE_LT,  "sản phẩm"));
+    cardRow.add(statCard("Giá trị tồn kho",  statValue, C_GREEN, C_GREEN_LT, "VNĐ"));
+    cardRow.add(statCard("Sắp hết hàng",    statLow,  C_AMBER, C_AMBER_LT, "sản phẩm"));
+    cardRow.add(statCard("Hết hàng",         statOut,   C_RED,   C_RED_LT,   "sản phẩm"));
+    // Gắn hàng thẻ này lên trên cùng của vùng Center
+    center.add(cardRow, BorderLayout.NORTH);
+    // Tạo 1 thẻ bọc ngoài chứa Bảng dữ liệu, dùng nền trắng viền bo tròn (whiteCard)
+    JPanel tableCard = whiteCard("Danh sách sản phẩm");
+    // Cấu hình Model cho bảng dữ liệu (Khóa tính năng sửa trực tiếp trên ô)
+    tblDashModel = new DefaultTableModel(new String[]{"Mã SP","Tên sản phẩm","Danh mục","Thương hiệu","Đơn giá","Tồn kho","Trạng thái"}, 0) {
+        @Override public boolean isCellEditable(int r, int c) { return false; }
+    };
+    // Biến bảng JTable thành bảng đã design sẵn (hàm buildTable)
+    tblDash = buildTable(tblDashModel);
+    // Căn chỉnh thủ công độ rộng của từng cột cho chuẩn đẹp
+    setColWidths(tblDash, new int[]{75,220,120,110,120,80,110});
+    // Nhúng bảng vào ScrollPane (để kéo cuộn) và gắn vào giữa thẻ
+    tableCard.add(styledScroll(tblDash), BorderLayout.CENTER);
+    // Lắp nguyên khối Bảng này vào vùng giữa của Panel center
+    center.add(tableCard, BorderLayout.CENTER);
+    // Lắp vùng Center vào form Tổng
+    outer.add(center, BorderLayout.CENTER);
+    // Trả về giao diện Dashboard hoàn thiện
+    return outer;
+}
+void refreshDashboard() {
+    // Nếu biến chưa khởi tạo thì thoát để tránh lỗi NullPointer
+    if (statTotal == null) return;
+    // Đếm tổng số lượng Sản phẩm có cờ isLow() = true
+    long low = products.stream().filter(Product::isLow).count();
+    // Đếm tổng số lượng SP chạm mốc 0
+    long out = products.stream().filter(Product::isEmpty).count();
+    // Vòng lặp mapToDouble để tính tổng tiền (Giá * Số lượng tồn) của toàn bộ kho
+    double val = products.stream().mapToDouble(p -> p.price * p.quantity).sum();
+    // Update Text: Tổng số mã sản phẩm trong kho
+    statTotal.setText(String.valueOf(products.size()));
+    // Update Text: Định dạng số tổng tiền hiển thị hàng nghìn có dấu phẩy (%,.0f)
+    statValue.setText(String.format("%,.0f", val));
+    // Update Text: Số lượng sắp hết
+    statLow.setText(String.valueOf(low));
+    // Update Text: Số lượng đã hết
+    statOut.setText(String.valueOf(out));
+    // Làm mới lại dữ liệu hiển thị trên Bảng danh sách
+    if (tblDashModel != null) {
+        // Xóa sạch dữ liệu cũ
+        tblDashModel.setRowCount(0);
+        // Quét lại mảng Products và nạp từng dòng
+        for (Product p : products) {
+            // Nạp 1 Row (hàng) dữ liệu vào Model
+            tblDashModel.addRow(new Object[]{
+                p.id, p.name, p.category, p.brand, String.format("%,.0f đ", p.price), p.quantity, p.statusText()
+            });
+        }
+    }
+}
+JPanel statCard(String label, JLabel valLbl, Color accent, Color bg, String unit) {
+    // Tạo 1 Panel tự vẽ đè (paintComponent) để tạo nền trắng có vạch dọc tô điểm màu (accent) ở viền trái
+    JPanel c = new JPanel() {
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // Đổ nền trắng toàn bộ
+            g2.setColor(C_WHITE); g2.fillRoundRect(0,0,getWidth(),getHeight(),12,12);
+            // Vẽ khung viền xám
+            g2.setColor(C_BORDER); g2.drawRoundRect(0,0,getWidth()-1,getHeight()-1,12,12);
+            // Vẽ vạch dọc làm điểm nhấn màu (accent) ở viền bên trái
+            g2.setColor(accent);  g2.fillRoundRect(0,16,4,getHeight()-32,4,4);
+            g2.dispose(); super.paintComponent(g);
+        }
+    };
+    // Làm trong nền thừa, căn Y_AXIS (dọc)
+    c.setOpaque(false); c.setLayout(new BoxLayout(c, BoxLayout.Y_AXIS));
+    c.setBorder(new EmptyBorder(18,20,18,14));
+    // Label Tiêu đề của thẻ
+    JLabel lbl = new JLabel(label);
+    lbl.setFont(F_SMALL); lbl.setForeground(C_TEXT2); lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Label Giá trị (số to đùng)
+    valLbl.setFont(new Font("Segoe UI", Font.BOLD, 26)); valLbl.setForeground(accent); valLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Label Đơn vị (VD: "sản phẩm", "VNĐ")
+    JLabel uLbl = new JLabel(unit);
+    uLbl.setFont(F_SMALL); uLbl.setForeground(C_TEXT3); uLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Lắp theo thứ tự từ trên xuống: Tiêu đề -> Khoảng trống -> Số lượng -> Đơn vị
+    c.add(lbl); c.add(Box.createVerticalStrut(6)); c.add(valLbl); c.add(uLbl);
+    return c;
+}
+```
+
+### 4. Giao diện Lịch sử Giao dịch & Xuất File
+```java
+JPanel buildTransPanel() {
+    // Khởi tạo Panel tổng bọc bên ngoài màn Lịch sử
+    JPanel outer = new JPanel(new BorderLayout(0,14));
+    outer.setBackground(C_BG); outer.setBorder(new EmptyBorder(24,24,24,24));
+    
+    // Panel chứa thanh tìm kiếm và tiêu đề ở trên cùng
+    JPanel topRow = new JPanel(new BorderLayout(10,0));
+    topRow.setBackground(C_BG);
+    JLabel title = new JLabel("Lịch sử giao dịch");
+    title.setFont(F_TITLE); title.setForeground(C_TEXT);
+    
+    // Vùng Cụm Search bên phải
+    JPanel srch = new JPanel(new FlowLayout(FlowLayout.RIGHT,8,0));
+    srch.setBackground(C_BG);
+    // Combobox lọc theo loại giao dịch
+    JComboBox<String> cbType = buildCombo(new String[]{"Tất cả giao dịch", "Chỉ Nhập kho", "Chỉ Xuất kho"});
+    cbType.setPreferredSize(new Dimension(150, 34));
+    // Ô text nhập từ khóa search
+    JTextField fSearch = buildTextField("Tìm mã GD, tên SP, người, ngày...", 250);
+    // Nút Bấm xuất file CSV (Màu xanh lá giống Excel)
+    JButton btnExport = createBtn("Xuất Excel (CSV)", C_GREEN, C_WHITE);
+    
+    // Đưa 3 thành phần này vào thanh Search
+    srch.add(cbType); srch.add(fSearch); srch.add(btnExport);
+    // Gắn Tiêu đề và thanh search lên topRow
+    topRow.add(title, BorderLayout.WEST); topRow.add(srch, BorderLayout.EAST);
+    outer.add(topRow, BorderLayout.NORTH);
+
+    // Khởi tạo thẻ trắng chứa Bảng dữ liệu
+    JPanel card = whiteCard("Tất cả giao dịch nhập / xuất kho");
+    // Định nghĩa tên 8 Cột trong bảng giao dịch
+    String[] cols = {"Mã GD","Mã SP","Tên sản phẩm","Loại","Số lượng","Người thực hiện","Ngày giờ","Ghi chú"};
+    // Khởi tạo TableModel chặn quyền click sửa dữ liệu
+    tblTransModel = new DefaultTableModel(cols, 0) {
+        @Override public boolean isCellEditable(int r, int c) { return false; }
+    };
+    // Design bảng và set độ rộng hiển thị đẹp mắt
+    tblTrans = buildTable(tblTransModel);
+    setColWidths(tblTrans, new int[]{65,65,190,90,75,110,140,165});
+
+    // Custom riêng cột thứ 3 (Loại giao dịch) để tô màu xanh/đỏ cho text
+    tblTrans.getColumnModel().getColumn(3).setCellRenderer(new DefaultTableCellRenderer() {
+        @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, foc, r, c);
+            setBorder(new EmptyBorder(0,10,0,10));
+            String s = v == null ? "" : v.toString();
+            // Nếu có chữ "Nhập" thì in font Xanh lá, ngược lại in font Đỏ cảnh báo
+            setForeground(s.contains("Nhập") ? C_GREEN : C_RED);
+            setBackground(sel ? C_SEL : (r%2==0 ? C_WHITE : C_ROW_ALT));
+            setFont(new Font("Segoe UI", Font.BOLD, 12));
+            return this; // Trả về Cell hiển thị
+        }
+    });
+
+    // Nhúng bảng vào Scroll và gắn vào thẻ bọc
+    card.add(styledScroll(tblTrans), BorderLayout.CENTER);
+    outer.add(card, BorderLayout.CENTER);
+    // Nạp dữ liệu lúc khởi tạo
+    refreshTransTable();
+
+    // Đối tượng Runnable chứa logic Tìm Kiếm (Filter) đa năng (chạy real-time)
+    Runnable applyFilter = () -> {
+        // Lấy từ khóa, xóa khoảng trắng thừa, viết thường chữ
+        String kw = fSearch.getText().trim().toLowerCase();
+        // Bỏ qua giá trị placeholder mặc định
+        if (kw.equals("tìm mã gd, tên sp, người, ngày...")) kw = "";
+        // Lấy giá trị của bộ lọc Combobox Nhập/Xuất
+        String type = (String) cbType.getSelectedItem();
+        
+        // Reset trắng số dòng của bảng
+        tblTransModel.setRowCount(0);
+        // Duyệt danh sách giao dịch TỪ DƯỚI LÊN TRÊN (Để cái mới nhất hiện lên trên cùng của bảng)
+        for (int i = transactions.size()-1; i >= 0; i--) {
+            Transaction tx = transactions.get(i);
+            // Khớp bộ lọc Combobox Loại GD
+            boolean matchType = type.equals("Tất cả giao dịch") || 
+                               (type.equals("Chỉ Nhập kho") && tx.type == Transaction.Type.NHAP) ||
+                               (type.equals("Chỉ Xuất kho") && tx.type == Transaction.Type.XUAT);
+            // Khớp bộ lọc Từ khóa (Bất kể chữ gì nằm trong id, tên SP, tên User, Ngày tháng đều lọt)
+            boolean matchKw = kw.isEmpty() || tx.id.toLowerCase().contains(kw) || 
+                              tx.productName.toLowerCase().contains(kw) || 
+                              tx.user.toLowerCase().contains(kw) || tx.date.contains(kw);
+            
+            // Nếu qua ải kiểm tra (Filter == pass)
+            if (matchType && matchKw) {
+                // Thêm dòng mới vào bảng
+                tblTransModel.addRow(new Object[]{
+                    tx.id, tx.productId, tx.productName, tx.type == Transaction.Type.NHAP ? "Nhập kho" : "Xuất kho", tx.quantity, tx.user, tx.date, tx.note
+                });
+            }
+        }
+    };
+
+    // Đính kèm Sự kiện bắt thao tác gõ phím trực tiếp trên bàn phím -> Lọc ngay lập tức
+    fSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+        public void insertUpdate(javax.swing.event.DocumentEvent e)  { applyFilter.run(); } // Khi nhập
+        public void removeUpdate(javax.swing.event.DocumentEvent e)  { applyFilter.run(); } // Khi xóa
+        public void changedUpdate(javax.swing.event.DocumentEvent e) {}
+    });
+    // Gắn sự kiện khi thay đổi Combobox -> Lọc
+    cbType.addActionListener(e -> applyFilter.run());
+
+    // Gắn sự kiện click vào nút Export CSV
+    btnExport.addActionListener(e -> exportTransToCSV());
+
+    return outer;
+}
+
+void exportTransToCSV() {
+    // Chặn không cho xuất nếu bảng rỗng
+    if (tblTransModel.getRowCount() == 0) { warn("Không có dữ liệu để xuất!"); return; }
+    // Bật hộp thoại File Dialog chuẩn của Hệ điều hành để chọn chỗ Save
+    JFileChooser fileChooser = new JFileChooser();
+    fileChooser.setDialogTitle("Chọn nơi lưu báo cáo giao dịch");
+    // Gợi ý tên file tự động có kèm Ngày Tháng Năm (ví dụ: LichSuGiaoDich_25042026.csv)
+    fileChooser.setSelectedFile(new File("LichSuGiaoDich_" + new SimpleDateFormat("ddMMyyyy").format(new Date()) + ".csv"));
+    
+    // Nếu người dùng ấn Save trên hộp thoại
+    if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+        // Dùng khối try-with-resources để tự động đóng file (Tránh lỗi thất thoát bộ nhớ). Format chuẩn UTF-8
+        try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(fileChooser.getSelectedFile()), "UTF-8"))) {
+            // RẤT QUAN TRỌNG: Chèn ký tự BOM (Byte Order Mark) để phần mềm Microsoft Excel nhận diện được font tiếng Việt UTF-8
+            pw.write('\ufeff'); 
+            // Dòng 1: In Tiêu đề Header của file CSV (phân cách bằng dấu phẩy)
+            pw.println("Mã GD,Mã SP,Tên sản phẩm,Loại,Số lượng,Người thực hiện,Ngày giờ,Ghi chú");
+            
+            // Duyệt từng hàng đang được hiển thị trên Bảng giao diện
+            for (int r = 0; r < tblTransModel.getRowCount(); r++) {
+                // Khởi tạo StringBuilder để nối dòng
+                StringBuilder row = new StringBuilder();
+                // Duyệt qua từng Cột của 1 Hàng
+                for (int c = 0; c < tblTransModel.getColumnCount(); c++) {
+                    // Lấy giá trị chữ tại ô (r,c)
+                    String val = tblTransModel.getValueAt(r, c) != null ? tblTransModel.getValueAt(r, c).toString() : "";
+                    // Ép nội dung vào trong nháy kép ("nội dung") để tránh bị lỗi nếu Ghi chú của ng dùng có chứa dấu phẩy
+                    row.append("\"").append(val.replace("\"", "\"\"")).append("\"");
+                    // Chèn dấu phẩy phân cách sang ô tiếp theo
+                    if (c < tblTransModel.getColumnCount() - 1) row.append(",");
+                }
+                // Ghi 1 dòng rành mạch ra file
+                pw.println(row.toString());
+            }
+            // Thông báo thành công!
+            JOptionPane.showMessageDialog(this, "Xuất báo cáo thành công!", "Hoàn tất", JOptionPane.INFORMATION_MESSAGE);
+        } catch (Exception ex) {
+            // Ném Popup lỗi nếu đường dẫn hỏng hoặc đầy ổ cứng
+            warn("Lỗi khi xuất file: " + ex.getMessage());
+        }
+    }
+}
+
+void refreshTransTable() {
+    if (tblTransModel == null) return;
+    // Đổ sạch danh sách cũ
+    tblTransModel.setRowCount(0);
+    // Chạy vòng lặp List từ dưới lên trên (Last-in First-out)
+    for (int i = transactions.size()-1; i >= 0; i--) {
+        Transaction tx = transactions.get(i);
+        // Nạp object tương ứng vào Model
+        tblTransModel.addRow(new Object[]{
+            tx.id, tx.productId, tx.productName, tx.type == Transaction.Type.NHAP ? "Nhập kho" : "Xuất kho", tx.quantity, tx.user, tx.date, tx.note 
+        });
+    }
+}
+```
+
+### 5. Giao diện Thống kê Kho (Biểu đồ & Bảng)
+```java
+JPanel buildStatsPanel() {
+    // Khởi tạo Panel mẹ của trang Thống kê
+    JPanel outer = new JPanel(new BorderLayout(0,18));
+    outer.setBackground(C_BG); outer.setBorder(new EmptyBorder(24,24,24,24));
+    // Header
+    JLabel title = new JLabel("Thống kê & Biểu đồ kho hàng");
+    title.setFont(F_TITLE); title.setForeground(C_TEXT);
+    outer.add(title, BorderLayout.NORTH);
+
+    // Tạo Panel Lưới chia làm 2 nửa trên đỉnh để hiển thị 2 Bảng nhỏ (Thống kê DM và Cảnh báo)
+    JPanel grid = new JPanel(new GridLayout(1,2,16,0));
+    grid.setBackground(C_BG); grid.setPreferredSize(new Dimension(0, 250));
+
+    // Cấu hình Bảng: Thống kê số lượng Sản phẩm và Tổng Tiền Tồn Kho theo từng Danh Mục
+    JPanel cardCat = whiteCard("Thống kê theo danh mục");
+    DefaultTableModel mCat = new DefaultTableModel(new String[]{"Danh mục","Số SP","Tổng tồn","Giá trị kho (đ)"}, 0) {
+        @Override public boolean isCellEditable(int r, int c) { return false; }
+    };
+    JTable tCat = buildTable(mCat);
+    setColWidths(tCat, new int[]{150,65,80,170});
+    cardCat.add(styledScroll(tCat), BorderLayout.CENTER);
+
+    // Cấu hình Bảng thứ 2: Filter trực tiếp các SP "Sắp hết" và "Hết hàng" (Báo động đỏ)
+    JPanel cardLow = whiteCard("Sản phẩm cần bổ sung hàng");
+    DefaultTableModel mLow = new DefaultTableModel(new String[]{"Mã SP","Tên sản phẩm","Tồn kho","Tối thiểu"}, 0) {
+        @Override public boolean isCellEditable(int r, int c) { return false; }
+    };
+    JTable tLow = buildTable(mLow);
+    setColWidths(tLow, new int[]{75,210,80,80});
+    cardLow.add(styledScroll(tLow), BorderLayout.CENTER);
+
+    // Ghép 2 Bảng vào Lưới
+    grid.add(cardCat); grid.add(cardLow);
+    
+    // Panel chứa BIỂU ĐỒ (Bar Chart) vẽ tay tự tùy chỉnh (Ở nửa dưới cùng)
+    JPanel chartCard = whiteCard("Biểu đồ Giá trị tồn kho theo Danh mục (VNĐ)");
+    // Ghi đè paintComponent để vẽ biểu đồ trực tiếp bằng công cụ Graphics2D có sẵn
+    chartView = new JPanel() {
+        @Override protected void paintComponent(Graphics gx) {
+            super.paintComponent(gx);
+            Graphics2D g2 = (Graphics2D) gx.create();
+            // Khử răng cưa mịn ảnh
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // Bắt đầu nhặt dữ liệu tổng tiền Group By theo Category
+            Map<String, Double> vals = new HashMap<>();
+            double max = 0; // Trục Y lớn nhất để quy chiếu thang đo tỷ lệ
+            for (Product p : products) {
+                double v = p.price * p.quantity;
+                // Nếu danh mục đã có trong Map thì cộng dồn, nếu chưa thì bắt đầu với 0.0 + v
+                vals.put(p.category, vals.getOrDefault(p.category, 0.0) + v);
+            }
+            // Tìm Cột có số tiền lớn nhất để làm Cột MAX cao đụng trần nhà
+            for (double v : vals.values()) if (v > max) max = v;
+
+            // Nếu kho rỗng 0đ -> Hiện chữ nhắc nhở "Chưa có dữ liệu"
+            if (max == 0 || vals.isEmpty()) {
+                g2.setColor(C_TEXT3); g2.drawString("Chưa có dữ liệu thống kê", getWidth()/2 - 60, getHeight()/2); return;
+            }
+
+            // Đo kích thước Panel chứa
+            int w = getWidth(), h = getHeight();
+            int padding = 40; // Viền cách tường
+            int graphW = w - 2*padding, graphH = h - 2*padding; // Chiều rộng/cao thật dùng để vẽ
+
+            // Vẽ trục tọa độ hoành (X-axis nền)
+            g2.setColor(C_BORDER); g2.drawLine(padding, h-padding, w-padding, h-padding);
+
+            // Toán học: Tính kích thước chiều rộng từng cột dựa vào số lượng Cột danh mục tổng
+            int numBars = vals.size();
+            int barWidth = Math.min(60, graphW / numBars / 2); // Kích thước Cột tối đa 60px
+            // Tính khoảng cách lề xen kẽ giữa các Cột
+            int spacing = (graphW - (barWidth * numBars)) / (numBars + 1);
+            int x = padding + spacing; // Tọa độ X (cột đầu tiên)
+            
+            // Bảng màu gradient (màu thay đổi qua từng vòng lặp)
+            Color[] colors = {C_BLUE, C_GREEN, C_AMBER, new Color(139, 92, 246), new Color(236, 72, 153)};
+            int cIdx = 0;
+
+            // Duyệt Hashmap vẽ các cột
+            for (Map.Entry<String, Double> e : vals.entrySet()) {
+                // Tính chiều cao cột theo tỷ lệ của MAX (v/max * 100%)
+                int barH = (int) ((e.getValue() / max) * graphH);
+                // Vì tọa độ Java (0,0) nằm ở Top-Left nên tọa độ Y phải đảo ngược lật từ dưới lên
+                int y = h - padding - barH;
+
+                // Chọn màu tương ứng, đổ viền bo góc cột (6px bo)
+                g2.setColor(colors[cIdx % colors.length]); g2.fillRoundRect(x, y, barWidth, barH, 6, 6);
+
+                // Dựng Text dán nhãn của Danh mục dưới chân Cột (Label dưới trục X)
+                g2.setColor(C_TEXT2); g2.setFont(F_SMALL);
+                String label = e.getKey();
+                int lw = g2.getFontMetrics().stringWidth(label); // Lấy độ rộng string để Căn giữa text theo Cột
+                g2.drawString(label, x + (barWidth - lw)/2, h - padding + 15);
+                
+                // Nhích hệ tọa độ X dịch sang phải để chuẩn bị vẽ vòng lặp cột tiếp theo
+                x += barWidth + spacing; cIdx++;
+            }
+            g2.dispose();
+        }
+    };
+    chartView.setBackground(C_WHITE);
+    // Nhét Biểu Đồ vào Panel
+    chartCard.add(chartView, BorderLayout.CENTER);
+
+    // Chập 2 cục Panel (Bảng biểu 2 cái nửa trên) và (1 cái Biểu đồ vẽ ở nửa dưới) vào nhau
+    JPanel centerSplit = new JPanel(new BorderLayout(0, 16));
+    centerSplit.setBackground(C_BG);
+    centerSplit.add(grid, BorderLayout.NORTH); centerSplit.add(chartCard, BorderLayout.CENTER);
+    
+    // Gắn thẻ ClientProperty tĩnh lên Panel Tổng để các sự kiện bên ngoài gọi vào lấy dc Model Bảng
+    outer.putClientProperty("mCat", mCat);
+    outer.putClientProperty("mLow", mLow);
+    outer.add(centerSplit, BorderLayout.CENTER);
+
+    // Load Data
+    refreshStatsPanel(outer);
+    return outer;
+}
+
+void refreshStats() {
+    // Vòng quét đệ quy qua các giao diện để bắt được Form "Thống Kê" (Chứa mCat) sau đó ép Load lại dữ liệu
+    for (Component c : contentArea.getComponents()) {
+        if (c instanceof JPanel) {
+            JPanel p = (JPanel) c;
+            if (p.getClientProperty("mCat") instanceof DefaultTableModel) {
+                refreshStatsPanel(p);
+            }
+        }
+    }
+}
+
+void refreshStatsPanel(JPanel panel) {
+    // Nối với dữ liệu Bảng ngoài ClientProperty
+    DefaultTableModel mCat = (DefaultTableModel) panel.getClientProperty("mCat");
+    DefaultTableModel mLow = (DefaultTableModel) panel.getClientProperty("mLow");
+    if (mCat == null || mLow == null) return;
+    
+    // Reset Data mCat
+    mCat.setRowCount(0);
+    // Nhóm sản phẩm (GroupBy) bằng Java 8 Stream
+    products.stream().collect(Collectors.groupingBy(p -> p.category))
+        .forEach((cat, list) -> {
+            // Cộng tổng Số lượng và Giá trị Tồn
+            int tot    = list.stream().mapToInt(p -> p.quantity).sum();
+            double val = list.stream().mapToDouble(p -> p.price * p.quantity).sum();
+            mCat.addRow(new Object[]{cat, list.size(), tot, String.format("%,.0f", val)});
+        });
+        
+    // Reset Data mLow (Sắp hết hàng)
+    mLow.setRowCount(0);
+    // Quét stream nhặt Data isLow (Cảnh báo Tồn)
+    products.stream().filter(Product::isLow).forEach(p -> mLow.addRow(new Object[]{p.id, p.name, p.quantity, p.minStock}));
+        
+    // Lệnh yêu cầu Hệ thống vẽ lại Biểu đồ Cột ngay lập tức để đồng bộ real-time
+    if (chartView != null) chartView.repaint(); 
+}
+```
+
+### 6. Thư viện tiện ích Giao diện (Utility UI)
+```java
+// ------- HÀM TIỆN ÍCH DÀNH CHO UI -------
+
+// N5: Hàm định dạng 1 Panel có viền bo góc, đổ bóng trắng dùng như khối thẻ chứa các Module
+JPanel whiteCard(String title) {
+    JPanel card = new JPanel(new BorderLayout()) {
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // Nền trắng
+            g2.setColor(C_WHITE); g2.fillRoundRect(0,0,getWidth(),getHeight(),12,12);
+            // Đổ đường viền xám bằng stroke mỏng 1f
+            g2.setColor(C_BORDER); g2.setStroke(new BasicStroke(1f));
+            g2.drawRoundRect(0,0,getWidth()-1,getHeight()-1,12,12);
+            g2.dispose(); super.paintComponent(g);
+        }
+    };
+    card.setOpaque(false);
+    // Header chứa Title
+    JPanel titleBar = new JPanel(new FlowLayout(FlowLayout.LEFT,16,10));
+    titleBar.setBackground(C_WHITE);
+    titleBar.setBorder(BorderFactory.createMatteBorder(0,0,1,0,C_BORDER));
+    JLabel lbl = new JLabel(title);
+    lbl.setFont(F_H2); lbl.setForeground(C_TEXT);
+    titleBar.add(lbl);
+    card.add(titleBar, BorderLayout.NORTH);
+    return card;
+}
+
+// N5: Định dạng Data Bảng JTable trở nên phẳng, chuyên nghiệp
+JTable buildTable(DefaultTableModel model) {
+    JTable t = new JTable(model);
+    t.setBackground(C_WHITE); t.setForeground(C_TEXT);
+    // Font hiển thị thông thường, độ cao Row 36px cho chạm ngón tay
+    t.setFont(F_BODY); t.setRowHeight(36);
+    t.setShowGrid(false); t.setIntercellSpacing(new Dimension(0,0));
+    // Màu dải highlight khi bôi đen (Xanh băng)
+    t.setSelectionBackground(C_SEL); t.setSelectionForeground(C_TEXT);
+    t.setFillsViewportHeight(true);
+    // Tùy chỉnh Dòng tên cột Header (Màu xám, font đậm)
+    t.getTableHeader().setBackground(new Color(248,250,252));
+    t.getTableHeader().setForeground(C_TEXT2);
+    t.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+    t.getTableHeader().setReorderingAllowed(false); // Cấm kéo thả cột lộn xộn
+    t.getTableHeader().setPreferredSize(new Dimension(0,38));
+    t.getTableHeader().setBorder(BorderFactory.createMatteBorder(0,0,1,0,C_BORDER));
+    // Bộ máy Render (In chữ lên Cell)
+    t.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+        @Override public Component getTableCellRendererComponent(JTable tbl, Object v, boolean sel, boolean foc, int r, int c) {
+            super.getTableCellRendererComponent(tbl, v, sel, foc, r, c);
+            // Margin thụt lề 12px
+            setBorder(new EmptyBorder(0,12,0,12));
+            setFont(F_BODY);
+            // Chức năng dòng Zebra chẵn/lẻ đổi màu xám trắng
+            setBackground(sel ? C_SEL : (r%2==0 ? C_WHITE : C_ROW_ALT));
+            setForeground(C_TEXT);
+            // Tính năng nổi bật Cảnh báo Chữ theo Nội dung chuỗi Trạng Thái
+            if (v != null) {
+                switch (v.toString()) {
+                    case "Hết hàng": setForeground(C_RED);   setFont(F_LABEL); break; // Hết thì tô Đỏ
+                    case "Sắp hết":  setForeground(C_AMBER); setFont(F_LABEL); break; // Thiếu thì tô Vàng
+                    case "Còn hàng": setForeground(C_GREEN); setFont(F_LABEL); break; // Dư thì tô Xanh
+                }
+            }
+            return this;
+        }
+    });
+    // Gắn TableRowSorter cho phép Bấm tiêu đề Cột -> Tự Sắp xếp list (A-Z)
+    t.setRowSorter(new TableRowSorter<>(model));
+    return t;
+}
+
+// N5: Định dạng Scroll View cho phẳng lỳ
+JScrollPane styledScroll(JTable t) {
+    JScrollPane sp = new JScrollPane(t);
+    sp.setBackground(C_WHITE); sp.getViewport().setBackground(C_WHITE);
+    sp.setBorder(BorderFactory.createEmptyBorder()); // Xóa viền 3D mặc định
+    return sp;
+}
+
+// N5: Định dạng các Ô Search / Nhập Text có bóng mờ (Placeholder hint)
+JTextField buildTextField(String placeholder, int w) {
+    JTextField f = new JTextField();
+    f.setFont(F_BODY); f.setBackground(C_WHITE);
+    f.setForeground(C_TEXT); f.setCaretColor(C_BLUE); // Con trỏ nháy màu xanh dương
+    // Kẻ viền xám 1px
+    f.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(C_BORDER, 1), new EmptyBorder(6,10,6,10)));
+    f.setPreferredSize(new Dimension(w > 0 ? w : 300, 34)); // Chiều rộng cài tĩnh bằng tham số W
+    // Nhúng giả lập Hint Placeholder nếu có
+    if (!placeholder.isEmpty()) {
+        f.setText(placeholder); f.setForeground(C_TEXT3); // Text xám siêu mờ
+        f.addFocusListener(new FocusAdapter() {
+            @Override public void focusGained(FocusEvent e) { // Bấm chuột vào xóa Hint
+                if (f.getText().equals(placeholder)) { f.setText(""); f.setForeground(C_TEXT); }
+            }
+            @Override public void focusLost(FocusEvent e) { // Bỏ chuột ra nếu trống -> Nạp lại Hint
+                if (f.getText().isEmpty()) { f.setText(placeholder); f.setForeground(C_TEXT3); }
+            }
+        });
+    }
+    return f;
+}
+
+// N5: Cấu hình Menu Select Option phẳng
+JComboBox<String> buildCombo(String[] items) {
+    JComboBox<String> cb = new JComboBox<>(items);
+    cb.setFont(F_BODY); cb.setBackground(C_WHITE);
+    cb.setForeground(C_TEXT);
+    cb.setPreferredSize(new Dimension(300, 34));
+    return cb;
+}
+
+// N5: Hàm vòng lặp cài kích cỡ Cột thủ công
+void setColWidths(JTable t, int[] ws) {
+    for (int i = 0; i < ws.length && i < t.getColumnCount(); i++)
+        t.getColumnModel().getColumn(i).setPreferredWidth(ws[i]);
+}
+
+// N5: Bắn Error Popup
+void warn(String msg) {
+    JOptionPane.showMessageDialog(this, msg, "Cảnh báo", JOptionPane.WARNING_MESSAGE);
+}
+
+// N5: Cấu hình Button Cứng chung (Có tô màu nhấn dìm, Hover)
+static JButton createBtn(String text, Color bg, Color fg) {
+    JButton btn = new JButton(text) {
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // Chỉnh sắc độ Nút Đậm khi ấn xuống, Nhạt đi khi lướt lên
+            Color c = getModel().isPressed()  ? bg.darker() : getModel().isRollover() ? bg.brighter() : bg;
+            g2.setColor(c); g2.fillRoundRect(0,0,getWidth(),getHeight(),8,8); // Tô góc nén 8px
+            g2.setColor(C_BORDER); g2.setStroke(new BasicStroke(1f));
+            g2.drawRoundRect(0,0,getWidth()-1,getHeight()-1,8,8);
+            g2.dispose(); super.paintComponent(g);
+        }
+    };
+    btn.setFont(new Font("Segoe UI", Font.BOLD, 13));
+    btn.setForeground(fg);
+    btn.setOpaque(false); btn.setContentAreaFilled(false);
+    btn.setBorderPainted(false); btn.setFocusPainted(false); // Xóa chấm khung đứt
+    btn.setBorder(new EmptyBorder(7,16,7,16)); // Đệm
+    btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); // Đổi Trỏ tay
+    return btn;
+}
+```
+
+Chúc bạn hoàn thiện báo cáo thật xuất sắc!
