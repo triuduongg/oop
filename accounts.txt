@@ -1,0 +1,2 @@
+admin|admin123|Quản lý nhân sự|Quản trị viên Hệ thống|0988123456|admin@electro.com
+kho1|kho123|Quản lý kho|Nhân viên Kho chính|0912345678|kho1@electro.com

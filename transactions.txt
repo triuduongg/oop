@@ -1,0 +1,4 @@
+GD0001|SP0001|iPhone 15 Pro Max|NHAP|30|23/04/2026 08:05:00|Nhập hàng đầu kỳ|kho1
+GD0002|SP0001|iPhone 15 Pro Max|XUAT|5|23/04/2026 08:05:00|Xuất bán khách lẻ|kho1
+GD0003|SP0003|MacBook Pro M3 14 inch|NHAP|10|23/04/2026 08:05:00|Nhập từ Apple VN|kho1
+GD0004|SP0006|AirPods Pro 2|XUAT|8|23/04/2026 08:05:00|Xuất đại lý Hà Nội|kho1

@@ -1,0 +1,12 @@
+SP0001|iPhone 15 Pro Max|Điện thoại|Apple|3.299E7|25|5|Chiếc|256GB, Titan Black
+SP0002|Samsung Galaxy S24 Ultra|Điện thoại|Samsung|2.899E7|18|5|Chiếc|512GB, Titanium Gray
+SP0003|MacBook Pro M3 14 inch|Laptop|Apple|4.999E7|8|3|Chiếc|M3 Pro, 18GB RAM
+SP0004|Dell XPS 15 9530|Laptop|Dell|3.899E7|12|3|Chiếc|Intel i9, 32GB, RTX 4070
+SP0005|iPad Pro M4 11 inch|Máy tính bảng|Apple|2.299E7|15|5|Chiếc|256GB, WiFi+Cellular
+SP0006|AirPods Pro 2|Tai nghe|Apple|6990000.0|42|10|Chiếc|Chống ồn ANC, USB-C
+SP0007|Sony WH-1000XM5|Tai nghe|Sony|8490000.0|20|8|Chiếc|Chống ồn, 30h pin
+SP0008|Apple Watch Series 9|Đồng hồ TM|Apple|1.249E7|3|5|Chiếc|45mm, GPS+Cellular
+SP0009|Samsung 65 QLED 8K|Tivi|Samsung|8.599E7|0|2|Chiếc|65Q950C, HDR10+
+SP0010|Logitech MX Master 3S|Phụ kiện|Logitech|2290000.0|55|15|Chiếc|Chuột không dây
+SP0011|Anker 140W GaN Charger|Phụ kiện|Anker|990000.0|2|10|Chiếc|USB-C 3 cổng
+SP0012|SSD Samsung 990 Pro 2TB|Lưu trữ|Samsung|3490000.0|30|10|Chiếc|NVMe M.2 PCIe 4.0
